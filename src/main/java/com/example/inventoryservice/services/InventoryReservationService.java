@@ -1,17 +1,20 @@
 package com.example.inventoryservice.services;
 
+import com.example.inventoryservice.clients.KafkaProducerClient;
 import com.example.inventoryservice.dtos.RevokeReservationDto;
 import com.example.inventoryservice.exceptions.FieldNotFoundException;
 import com.example.inventoryservice.exceptions.InventoryDoesNotExist;
 import com.example.inventoryservice.exceptions.InventoryReservationAlreadyExists;
 import com.example.inventoryservice.exceptions.InventoryReservationDoesNotExists;
-import com.example.inventoryservice.models.InventoryItem;
-import com.example.inventoryservice.models.InventoryReservation;
-import com.example.inventoryservice.models.InventoryReservationStatus;
+import com.example.inventoryservice.models.*;
 import com.example.inventoryservice.repositories.InventoryItemRepository;
 import com.example.inventoryservice.repositories.InventoryReservationRepository;
 import com.example.inventoryservice.utils.IdGenerator;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -22,10 +25,18 @@ import java.util.Date;
 public class InventoryReservationService implements IInventoryReservatonService {
 
     @Autowired
-    InventoryReservationRepository inventoryReservationRepository;
+    private InventoryReservationRepository inventoryReservationRepository;
 
     @Autowired
-    InventoryItemRepository inventoryItemRepository;
+    private InventoryItemRepository inventoryItemRepository;
+
+    @Autowired
+    private KafkaProducerClient kafkaProducerClient;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    private static final Logger logger = LoggerFactory.getLogger(InventoryReservationService.class);
 
     private final int reservationValidityInMin = 30;
 
@@ -99,6 +110,25 @@ public class InventoryReservationService implements IInventoryReservatonService 
         inventoryReservation.setUpdatedAt(now);
         inventoryReservation.setInventoryItem(storedInventoryItem);
 
-        return inventoryReservationRepository.save(inventoryReservation);
+        InventoryReservation updatedInventoryReservation = inventoryReservationRepository.save(inventoryReservation);
+
+        String topic = "log-inventory-transaction";
+        if (updatedInventoryReservation.getInventoryReservationStatus() == InventoryReservationStatus.COMPLETED) {
+            InventoryTransaction inventoryTransaction = new InventoryTransaction();
+
+            inventoryTransaction.setInventoryItem(storedInventoryItem);
+            inventoryTransaction.setTransactionDate(now);
+            inventoryTransaction.setTransactionType(TransactionType.SALE);
+            inventoryTransaction.setQuantity(updatedInventoryReservation.getQuantity());
+            inventoryTransaction.setDescription("Sale Transaction");
+
+            try {
+                kafkaProducerClient.sendMessage(topic, objectMapper.writeValueAsString(inventoryTransaction));
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        return updatedInventoryReservation;
     }
 }

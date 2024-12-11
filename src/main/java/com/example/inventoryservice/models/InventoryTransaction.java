@@ -1,8 +1,7 @@
 package com.example.inventoryservice.models;
 
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
@@ -12,10 +11,11 @@ import java.util.Date;
 @Entity
 public class InventoryTransaction extends BaseModel {
 
-    @Column(nullable = false)
-    private Long inventoryItemId;
+    @OneToOne(fetch = FetchType.EAGER)
+    private InventoryItem inventoryItem;
 
     @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
     private TransactionType transactionType;  // e.g., "restock", "sale"
 
     @Column(nullable = false)
