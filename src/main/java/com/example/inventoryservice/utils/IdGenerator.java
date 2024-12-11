@@ -4,8 +4,8 @@ import java.util.Random;
 
 public class IdGenerator {
 
-    public static String generateReservationId(int length) {
-        String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    public static String generateId(int length) {
+        String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
 
         // StringBuilder to hold the random string
         StringBuilder result = new StringBuilder(length);

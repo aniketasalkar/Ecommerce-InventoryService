@@ -42,11 +42,23 @@ public class InventoryController {
         }
     }
 
-    @PatchMapping("/inventory_iem/update/{product_id}")
+    @PatchMapping("/inventory_item/update/{product_id}")
     public ResponseEntity<InventoryItemResponseDto> updateInventoryItem(@PathVariable("product_id") Long productId,
                                                                         @RequestBody InventoryItemPatchRequestDto inventoryItemPatchRequestDto) {
         try {
             InventoryItem inventoryItem = inventoryService.updateInventory(productId, from(inventoryItemPatchRequestDto));
+
+            return new ResponseEntity<>(from(inventoryItem), HttpStatus.OK);
+        } catch (Exception exception) {
+            throw exception;
+        }
+    }
+
+    @PatchMapping("/inventory_item/addQuantity/{product_id}")
+    public ResponseEntity<InventoryItemResponseDto> addQuantityToInventory(@PathVariable("product_id") Long productId,
+                                                                           @Valid @RequestBody AddQuantityDto addQuantityDto) {
+        try {
+            InventoryItem inventoryItem = inventoryService.addQuantity(productId, addQuantityDto);
 
             return new ResponseEntity<>(from(inventoryItem), HttpStatus.OK);
         } catch (Exception exception) {

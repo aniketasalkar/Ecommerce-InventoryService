@@ -1,8 +1,15 @@
 package com.example.inventoryservice.services;
 
+import com.example.inventoryservice.dtos.AddQuantityDto;
 import com.example.inventoryservice.exceptions.*;
 import com.example.inventoryservice.models.InventoryItem;
+import com.example.inventoryservice.models.InventoryReservationStatus;
+import com.example.inventoryservice.models.InventoryTransaction;
+import com.example.inventoryservice.models.TransactionType;
+import com.example.inventoryservice.producer.KafkaEventProducer;
+import com.example.inventoryservice.producer.ProduceRestockEvent;
 import com.example.inventoryservice.repositories.InventoryItemRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +24,9 @@ public class InventoryService implements IInventoryService {
 
     @Autowired
     InventoryItemRepository inventoryItemRepository;
+
+    @Autowired
+    private ProduceRestockEvent produceRestockEvent;
 
     private final int initialInventoryQuantity = 0;
 
@@ -103,6 +113,38 @@ public class InventoryService implements IInventoryService {
 
         storedInventoryItem.setAvailableQuantity(storedInventoryItem.getQuantity() - storedInventoryItem.getReservedQuantity());
 
-        return inventoryItemRepository.save(storedInventoryItem);
+        InventoryItem savedInventoryItem = inventoryItemRepository.save(storedInventoryItem);
+
+        return savedInventoryItem;
+    }
+
+    @Override
+    public InventoryItem addQuantity(Long productId, AddQuantityDto addQuantityDto) {
+
+        int quantity = addQuantityDto.getQuantity();
+
+        if (productId < 0) {
+            throw new InvalidProductIdException("Invalid Product Id");
+        }
+
+        if (quantity < 0 || quantity > 10000) {
+            throw new InvalidQuantityException("Quantity should in in range of 0 to 10000");
+        }
+
+        InventoryItem inventoryItem = inventoryItemRepository.findByProductId(productId)
+                .orElseThrow(() -> new InventoryDoesNotExist("Inventory Does not exists for the product Id: " + productId));
+
+        Date now = new Date();
+
+        inventoryItem.setQuantity(inventoryItem.getQuantity() + quantity);
+        inventoryItem.setAvailableQuantity(inventoryItem.getAvailableQuantity() + quantity);
+        inventoryItem.setUpdatedAt(now);
+
+        InventoryItem savedInventoryItem = inventoryItemRepository.save(inventoryItem);
+
+        String topic = "log-inventory-transaction";
+        produceRestockEvent.produceTransactionKafkaEvent(topic, savedInventoryItem, quantity);
+
+        return savedInventoryItem;
     }
 }

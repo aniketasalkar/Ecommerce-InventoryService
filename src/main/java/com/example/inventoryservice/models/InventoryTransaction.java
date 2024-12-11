@@ -11,7 +11,10 @@ import java.util.Date;
 @Entity
 public class InventoryTransaction extends BaseModel {
 
-    @OneToOne(fetch = FetchType.EAGER)
+    @Column(nullable = false)
+    private String transactionID;
+
+    @ManyToOne(fetch = FetchType.EAGER)
     private InventoryItem inventoryItem;
 
     @Column(nullable = false)

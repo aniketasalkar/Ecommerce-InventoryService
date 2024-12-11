@@ -1,17 +1,12 @@
 package com.example.inventoryservice.services;
 
-import com.example.inventoryservice.clients.KafkaProducerClient;
 import com.example.inventoryservice.dtos.RevokeReservationDto;
-import com.example.inventoryservice.exceptions.FieldNotFoundException;
-import com.example.inventoryservice.exceptions.InventoryDoesNotExist;
-import com.example.inventoryservice.exceptions.InventoryReservationAlreadyExists;
-import com.example.inventoryservice.exceptions.InventoryReservationDoesNotExists;
+import com.example.inventoryservice.exceptions.*;
 import com.example.inventoryservice.models.*;
+import com.example.inventoryservice.producer.ProduceSaleEvent;
 import com.example.inventoryservice.repositories.InventoryItemRepository;
 import com.example.inventoryservice.repositories.InventoryReservationRepository;
 import com.example.inventoryservice.utils.IdGenerator;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,10 +26,7 @@ public class InventoryReservationService implements IInventoryReservatonService 
     private InventoryItemRepository inventoryItemRepository;
 
     @Autowired
-    private KafkaProducerClient kafkaProducerClient;
-
-    @Autowired
-    private ObjectMapper objectMapper;
+    private ProduceSaleEvent produceSaleEvent;
 
     private static final Logger logger = LoggerFactory.getLogger(InventoryReservationService.class);
 
@@ -51,6 +43,10 @@ public class InventoryReservationService implements IInventoryReservatonService 
 
         if (inventoryReservationRepository.findByProductIdAndOrderId(inventoryReservation.getProductId(), inventoryReservation.getOrderId()).isPresent()) {
             throw new InventoryReservationAlreadyExists("Reservation with order id " + inventoryReservation.getOrderId() + " already exists");
+        }
+
+        if (inventoryReservation.getQuantity() > inventoryItem.getAvailableQuantity()) {
+            throw new InsufficientQuantityException("Reservation request exceeds available quantities");
         }
 
         Date now = new Date();
@@ -73,7 +69,7 @@ public class InventoryReservationService implements IInventoryReservatonService 
         inventoryReservation.setCreatedAt(now);
         inventoryReservation.setUpdatedAt(now);
         inventoryReservation.setInventoryReservationStatus(InventoryReservationStatus.RESERVED);
-        inventoryReservation.setReservationId(IdGenerator.generateReservationId(reservationIdCharLength));
+        inventoryReservation.setReservationId(IdGenerator.generateId(reservationIdCharLength));
 
         return inventoryReservationRepository.save(inventoryReservation);
     }
@@ -112,21 +108,9 @@ public class InventoryReservationService implements IInventoryReservatonService 
 
         InventoryReservation updatedInventoryReservation = inventoryReservationRepository.save(inventoryReservation);
 
-        String topic = "log-inventory-transaction";
         if (updatedInventoryReservation.getInventoryReservationStatus() == InventoryReservationStatus.COMPLETED) {
-            InventoryTransaction inventoryTransaction = new InventoryTransaction();
-
-            inventoryTransaction.setInventoryItem(storedInventoryItem);
-            inventoryTransaction.setTransactionDate(now);
-            inventoryTransaction.setTransactionType(TransactionType.SALE);
-            inventoryTransaction.setQuantity(updatedInventoryReservation.getQuantity());
-            inventoryTransaction.setDescription("Sale Transaction");
-
-            try {
-                kafkaProducerClient.sendMessage(topic, objectMapper.writeValueAsString(inventoryTransaction));
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
-            }
+            String topic = "log-inventory-transaction";
+            produceSaleEvent.produceTransactionKafkaEvent(topic, storedInventoryItem, updatedInventoryReservation.getQuantity());
         }
 
         return updatedInventoryReservation;
