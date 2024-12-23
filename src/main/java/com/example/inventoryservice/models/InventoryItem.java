@@ -1,8 +1,6 @@
 package com.example.inventoryservice.models;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.OneToMany;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
@@ -33,4 +31,7 @@ public class InventoryItem extends BaseModel {
 
     @Column(nullable = false)
     private Integer restockThreshold;
+
+//    @Enumerated(EnumType.STRING)
+//    private Status status;
 }
