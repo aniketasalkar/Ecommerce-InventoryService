@@ -11,7 +11,7 @@ import java.util.List;
 @Entity
 public class InventoryReservation extends BaseModel {
 
-    @OneToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.EAGER)
     private InventoryItem inventoryItem;
 
     @Column(nullable = false)
